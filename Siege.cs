@@ -1,0 +1,660 @@
+﻿using Keg.Extensions;
+using TC2.Base.Components;
+
+namespace TC2.Siege
+{
+	public static partial class Siege
+	{
+		[IGamemode.Data("Siege", "")]
+		public partial struct Gamemode(): IGamemode
+		{
+			/// <summary>
+			/// Reward sharing ratio based on player count.
+			/// <code>
+			/// Maths.Lerp(1.00f, 1.00f / player_count, reward_share_ratio);
+			/// </code>
+			/// </summary>
+			[Save.Ignore] public float reward_share_ratio = 0.50f;
+
+			[Save.Ignore] public float reward_mult = 1.50f;
+
+			/// <summary>
+			/// Base value of per-wave difficulty step.
+			/// </summary>
+			[Save.Ignore] public float difficulty_step = 1.00f;
+
+			/// <summary>
+			/// Player multiplier for the per-wave difficulty step.
+			/// <code>
+			/// difficulty_step *= 1.00f + (player_count * difficulty_player_mult);
+			/// </code>
+			/// </summary>
+			[Save.Ignore] public float difficulty_player_mult = 0.20f;
+
+			[Save.Ignore] public float difficulty_wave_mult = 0.10f;
+
+			/// <summary>
+			/// Final multiplier for the per-wave difficulty step. 
+			/// </summary>
+			[Save.Ignore] public float difficulty_mult = 1.00f;
+
+			[Save.Ignore] public float difficulty_max = 500.00f;
+
+			[Save.Ignore] public int wave_size_base = 3;
+			[Save.Ignore] public int wave_size_max = 50;
+			[Save.Ignore] public float wave_size_mult = 2.00f;
+
+			[Save.Ignore] public float wave_interval = 90.00f;
+			[Save.Ignore] public float wave_interval_difficulty_mult = 1.00f;
+
+			[Save.Ignore] public uint max_npc_count = 32;
+			[Save.Ignore] public uint max_characters_per_player = 8;
+
+			[Flags]
+			public enum Flags: uint
+			{
+				None = 0,
+
+				Active = 1 << 0,
+				Paused = 1 << 1,
+
+				No_Dispatcher = 1 << 2,
+
+				No_Wave_Size_Limit = 1 << 8,
+			}
+
+			public enum Status: uint
+			{
+				Undefined = 0,
+
+				Preparing,
+				Running,
+				Ended,
+
+				Restarting,
+			}
+
+			[ISingleton.Data(false, Net.SendType.Reliable)]
+			public partial struct Singleton(): ISingleton
+			{
+				[Save.Ignore] public IFaction.Handle h_faction_defenders = "defenders";
+				[Save.Ignore] public IFaction.Handle h_faction_attackers = "attackers";
+
+				public ushort wave_current;
+				[Save.Ignore] public byte target_count;
+				[Save.Ignore] public byte player_count;
+
+				public ISiege.Handle h_scenario = "bouda.00";
+				public int? scenario_wave_index_current;
+
+				/// <summary>
+				/// Current match difficulty.
+				/// </summary>
+				public float difficulty = 1.00f;
+
+				public Siege.Gamemode.Flags flags;
+				public Siege.Gamemode.Status status;
+
+				public float t_match_elapsed;
+				public float t_last_wave;
+				public float t_next_wave;
+				[Save.Ignore, Net.Ignore] public float t_next_restart;
+				[Save.Ignore, Net.Ignore] public float t_last_notification;
+			}
+
+			public static void Configure()
+			{
+				App.WriteLine("Configure Siege", color: App.Color.Green);
+
+				Constants.Materials.global_yield_modifier = 0.00f;
+				Constants.Harvestable.global_yield_modifier = 0.00f;
+				Constants.Health.yield_modifier = 0.00f;
+
+				Constants.Block.global_yield_modifier = 0.00f;
+				Constants.Block.global_health_modifier *= 2.00f;
+
+				Constants.Organic.rotting_speed *= 10.00f;
+				//Rotting.enable_effects = false;
+
+				Constants.Despawn.despawn_interval_mult = 0.25f;
+				Constants.Despawn.item_sleep_count_max = 4;
+
+				Constants.Health.regen_amount_modifier = 2.00f;
+				Constants.Health.regen_interval_modifier = 1.70f;
+
+				//Constants.World.save_factions = false;
+				//Constants.World.save_players = true;
+				//Constants.World.save_characters = true;
+
+				//Constants.World.load_factions = false;
+				//Constants.World.load_players = true;
+				//Constants.World.load_characters = true;
+
+				Constants.World.enable_autosave = false;
+
+				Constants.Respawn.token_count_min = 10.00f;
+				Constants.Respawn.token_count_max = 500.00f;
+				Constants.Respawn.token_count_default = 30.00f;
+				Constants.Respawn.token_refill_amount = 0.50f;
+
+				Constants.Respawn.unclaimed_faction_spawnpoints = true;
+
+				Constants.Respawn.respawn_cooldown_base = 5.00f;
+				Constants.Respawn.respawn_cooldown_token_modifier = 0.00f;
+				Constants.Respawn.respawn_cost_base = 0.00f;
+
+				Constants.Characters.character_count_max = 1;
+				Constants.Characters.allow_custom_characters = false;
+				Constants.Characters.allow_switching = true;
+				Constants.Characters.allow_abandon = false;
+
+				Constants.Equipment.enable_equip = true;
+				Constants.Equipment.enable_unequip = false;
+
+				Constants.Factions.enable_join_faction = false;
+				Constants.Factions.enable_leave_faction = false;
+				Constants.Factions.enable_found_faction = false;
+				Constants.Factions.enable_disband_faction = false;
+				Constants.Factions.enable_kick = false;
+				Constants.Factions.enable_leadership = false;
+
+				Constants.Questing.enable_quests = false;
+
+				App.TryGetModInfo<TC2.Siege.ModInstance>(out var mod_siege);
+
+				//IRecipe.Database.AddAssetFilter((string path, string identifier, ModInfo mod_info) =>
+				//{
+				//	if (mod_info == mod_siege) return true;
+				//	else if (identifier.StartsWith("gunsmith.", StringComparison.OrdinalIgnoreCase)) return true;
+				//	else if (identifier.StartsWith("munitions.", StringComparison.OrdinalIgnoreCase)) return true;
+				//	else if (identifier.StartsWith("forge.", StringComparison.OrdinalIgnoreCase)) return true;
+				//	else if (identifier.StartsWith("manufactory.", StringComparison.OrdinalIgnoreCase)) return true;
+				//	else if (identifier.StartsWith("vending.", StringComparison.OrdinalIgnoreCase)) return true;
+				//	else if (identifier.StartsWith("wrench.", StringComparison.OrdinalIgnoreCase)) return true;
+				//	else return false;
+				//});
+
+				//IRecipe.Database.AddAssetPostProcessor((IRecipe.Definition definition, ref IRecipe.Data data) =>
+				//{
+				//	//App.WriteLine($"{definition.Identifier}: {definition.mod_info?.Identifier}");
+
+				//	if (definition.mod_info != mod_siege)
+				//	{
+				//		if (data.type == Recipe.Type.Workshop)
+				//		{
+				//			data.flags.SetFlag(Recipe.Flags.Hidden, true);
+				//			data.type = Recipe.Type.Buy;
+				//			data.tags = Recipe.Tags.Manufactory;
+
+				//			var products = data.products.AsSpan();
+
+				//			if (data.flags.HasAny(Crafting.Recipe.Flags.Blueprintable) && products[0].type == Crafting.Product.Type.Prefab)
+				//			{
+				//				if (products[0].prefab.TryGetPrefab(out var prefab))
+				//				{
+				//					var requirements = data.requirements.AsSpan();
+				//					requirements.GetTotalCost(out var cost_materials, out var cost_work, out var cost_extra);
+
+				//					if (cost_materials > 0.00f)
+				//					{
+				//						prefab.cost_materials = cost_materials;
+				//					}
+
+				//					if (cost_work > 0.00f)
+				//					{
+				//						prefab.cost_work = cost_work;
+				//					}
+
+				//					if (cost_extra > 0.00f)
+				//					{
+				//						prefab.cost_extra = cost_extra;
+				//					}
+				//				}
+				//			}
+				//		}
+				//	}
+
+				//	//if (!data.flags.HasAny(Crafting.Recipe.Flags.Hidden))
+				//	//{
+				//	//	Span<Crafting.Requirement> requirements_old = data.requirements.AsSpan();
+				//	//	Span<Crafting.Requirement> requirements_new = stackalloc Crafting.Requirement[data.requirements.Length];
+
+				//	//	var price = 0.00f;
+				//	//	var complexity = 1.00f;
+
+				//	//	foreach (ref var req in requirements_old)
+				//	//	{
+				//	//		switch (req.type)
+				//	//		{
+				//	//			case Crafting.Requirement.Type.Money:
+				//	//			{
+				//	//				App.WriteLine($"+ money {req.amount}");
+				//	//				price += req.amount;
+				//	//			}
+				//	//			break;
+
+				//	//			case Crafting.Requirement.Type.Work:
+				//	//			{
+				//	//				App.WriteLine($"+ {req.work} {MathF.Sqrt(req.amount * req.difficulty * 0.50f) * (req.difficulty * 0.10f)}");
+				//	//				price += MathF.Sqrt(req.amount * req.difficulty * 0.50f) * (req.difficulty * 0.10f);
+				//	//				complexity += 0.05f;
+				//	//			}
+				//	//			break;
+
+				//	//			case Crafting.Requirement.Type.Resource:
+				//	//			{
+				//	//				ref var material = ref req.material.GetData();
+				//	//				if (!material.IsNull())
+				//	//				{
+				//	//					ref var commodity = ref material.commodity.GetRef();
+				//	//					if (commodity.IsNotNull())
+				//	//					{
+				//	//						App.WriteLine($"+ {material.name}: {req.amount} * {commodity.market_price}");
+				//	//						price += commodity.market_price * req.amount;
+				//	//					}
+				//	//					else
+				//	//					{
+				//	//						App.WriteLine($"+ {material.name}: 10 * {req.amount}");
+				//	//						price += 10.00f * req.amount;
+				//	//					}
+				//	//					complexity += 0.15f;
+				//	//				}
+				//	//			}
+				//	//			break;
+				//	//		}
+				//	//	}
+
+				//	//	var price_final = Money.ToBataPrice(price * complexity);
+				//	//	if (price_final >= 0.00f)
+				//	//	{
+				//	//		App.WriteLine($"{data.name}: price_final: {price_final:0.00}", App.Color.Cyan);
+
+				//	//		requirements_new.Add(Crafting.Requirement.Money(price_final));
+				//	//		requirements_old.Clear();
+				//	//		requirements_new.CopyTo(requirements_old);
+				//	//	}
+				//	//}
+				
+				//});
+
+				IOrigin.Database.AddAssetFilter((string path, string identifier, ModInfo mod_info) =>
+				{
+					if (mod_info == mod_siege) return true;
+					else return false;
+				});
+
+				IKit.Database.AddAssetFilter((string path, string identifier, ModInfo mod_info) =>
+				{
+					if (mod_info == mod_siege) return true;
+					else return false;
+				});
+
+				//Augment.AddPostProcessor((ref IBlueprint.Data blueprint, ref Augment.Context context) =>
+				//{
+				//	Span<Crafting.Requirement> requirements_tmp = stackalloc Crafting.Requirement[context.requirements_new.Length];
+				//	context.requirements_new.CopyTo(requirements_tmp);
+				//	context.requirements_new.Clear();
+
+				//	var price = 0.00f;
+				//	var complexity = 1.00f;
+
+				//	foreach (ref var req in requirements_tmp)
+				//	{
+				//		switch (req.type)
+				//		{
+				//			case Crafting.Requirement.Type.Work:
+				//			{
+				//				price += MathF.Sqrt(req.amount * req.difficulty * 0.50f) * (req.difficulty * 0.10f);
+				//				complexity += 0.05f;
+				//			}
+				//			break;
+
+				//			case Crafting.Requirement.Type.Resource:
+				//			{
+				//				ref var material = ref req.material.GetData();
+				//				if (!material.IsNull())
+				//				{
+				//					ref var commodity = ref material.commodity.GetRef();
+				//					if (commodity.IsNotNull())
+				//					{
+				//						price += commodity.market_price * req.amount;
+				//					}
+				//					else
+				//					{
+				//						price += 10.00f * req.amount;
+				//					}
+				//					complexity += 0.15f;
+				//				}
+				//			}
+				//			break;
+				//		}
+				//	}
+
+				//	var price_final = Money.ToBataPrice(price * complexity);
+				//	if (price_final >= 0.00f)
+				//	{
+				//		context.requirements_new.Add(Crafting.Requirement.Money(price_final));
+
+				//		ref var recipe_new = ref context.GetRecipeNew();
+
+				//		if (recipe_new.tags.TrySetFlag(Crafting.Recipe.Tags.Gunsmith | Crafting.Recipe.Tags.Forge | Crafting.Recipe.Tags.Munitions, false))
+				//		{
+				//			recipe_new.tags.SetFlag(Crafting.Recipe.Tags.Manufactory, true);
+				//		}
+
+				//		recipe_new.type = Crafting.Recipe.Type.Buy;
+
+				//		return true;
+				//	}
+				//	else
+				//	{
+				//		return false;
+				//	}
+				//});
+
+#if SERVER
+//#if TODO_PLAYERTEAM
+//				Player.OnCreate += OnPlayerCreate;
+//				static void OnPlayerCreate(ref Region.Data region, ref Player.Data player)
+//				{
+//					player.SetFaction("defenders");
+
+//					//if (!player.GetControlledCharacter().IsValid())
+//					//{
+//					//	var ent_character_soldier = Character.Create(ref region, "Soldier", prefab: "human.male", flags: Character.Flags.Human | Character.Flags.Military, origin: "imperial.soldier", gender: Organic.Gender.Male, player_id: player.id, hair_frame: 5, beard_frame: 1);
+//					//	var ent_character_sapper = Character.Create(ref region, "Sapper", prefab: "human.male", flags: Character.Flags.Human | Character.Flags.Engineering | Character.Flags.Military, origin: "imperial.sapper", gender: Organic.Gender.Male, player_id: player.id, hair_frame: 2, beard_frame: 7);
+//					//	var ent_character_medic = Character.Create(ref region, "Medic", prefab: "human.female", flags: Character.Flags.Human | Character.Flags.Medical | Character.Flags.Military, origin: "imperial.medic", gender: Organic.Gender.Female, player_id: player.id, hair_frame: 10);
+
+//					//	player.SetControlledCharacter(ent_character_soldier);
+//					//}
+//				}
+//#endif
+#endif
+
+#if CLIENT
+				//Character.CreationGUI.enabled = false;
+				//Character.CharacterHUD.enabled = false;
+
+				Spawn.RespawnGUI.enabled = true;
+				Spawn.RespawnGUI.window_offset = new Vector2(0, 132);
+#endif
+			}
+
+			public static void Init()
+			{
+				App.WriteLine("Siege Init!", App.Color.Magenta);
+			}
+		}
+
+		[ISystem.PreUpdate.Reset(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void UpdateSiegeReset([Source.Singleton] ref Siege.Gamemode.Singleton g_siege_state)
+		{
+			g_siege_state.target_count = 0;
+		}
+
+		[ISystem.VeryEarlyUpdate(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void UpdateSiegeTargets(ISystem.Info info, Entity entity, 
+		[Source.Singleton] ref Siege.Gamemode.Singleton g_siege_state, [Source.Owned] ref Siege.Target.Data siege_target, [Source.Owned] in Faction.Data faction)
+		{
+			if (faction.id == g_siege_state.h_faction_defenders)
+			{
+				g_siege_state.target_count++;
+			}
+		}
+
+		private struct WaveInfo
+		{
+			public int index;
+			public int priority;
+			public float weight;
+
+			public WaveInfo(int index, int priority, float weight)
+			{
+				this.index = index;
+				this.priority = priority;
+				this.weight = weight;
+			}
+		}
+
+		[ISystem.VeryLateUpdate(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void UpdateSiegeLate(ISystem.Info info, ref Region.Data region, ref XorRandom random, 
+		[Source.Global] ref Siege.Gamemode gm_siege, [Source.Singleton] ref Siege.Gamemode.Singleton s_siege)
+		{
+			//App.WriteLine(siege.target_count);
+
+#if SERVER
+			var sync = false;
+			var player_count = region.GetConnectedPlayerCount();
+
+			sync |= s_siege.player_count.TrySet((byte)player_count);
+			sync |= s_siege.flags.TrySetFlag(Siege.Gamemode.Flags.Active, player_count > 0 && !s_siege.flags.HasAny(Siege.Gamemode.Flags.Paused));
+#endif
+
+			if (s_siege.flags.HasAny(Siege.Gamemode.Flags.Active))
+			{
+				var time = s_siege.t_match_elapsed;
+
+#if SERVER
+				const float prep_time = 60.00f;
+				switch (s_siege.status)
+				{
+					case Gamemode.Status.Undefined:
+					{
+						if (!Constants.World.edit_mode)
+						{
+							s_siege.status = Gamemode.Status.Preparing;
+						}
+					}
+					break;
+
+					case Gamemode.Status.Preparing:
+					{
+						if (time >= prep_time - 30.00f && s_siege.t_last_notification < prep_time - 30.00f)
+						{
+							s_siege.t_last_notification = time;
+							Notification.Push(ref region, "Match starting in 30 seconds!", Color32BGRA.Yellow, lifetime: 30.00f, "ui.alert.07", volume: 0.10f, pitch: 0.60f, send_type: Net.SendType.Reliable);
+						}
+						else if (time >= prep_time - 15.00f && s_siege.t_last_notification < prep_time - 15.00f)
+						{
+							s_siege.t_last_notification = time;
+							Notification.Push(ref region, "Match starting in 15 seconds!", Color32BGRA.Yellow, lifetime: 15.00f, "ui.alert.07", volume: 0.20f, pitch: 0.80f, send_type: Net.SendType.Reliable);
+						}
+						else if (time >= prep_time - 5.00f && s_siege.t_last_notification < prep_time - 5.00f)
+						{
+							s_siege.t_last_notification = time;
+							Notification.Push(ref region, "Match starting in 5 seconds!", Color32BGRA.Yellow, lifetime: 10.00f, "ui.alert.07", volume: 0.30f, pitch: 1.00f, send_type: Net.SendType.Reliable);
+						}
+						else if (time >= prep_time)
+						{
+							s_siege.status = Gamemode.Status.Running;
+						}
+					}
+					break;
+
+					case Gamemode.Status.Running:
+					{
+						if (s_siege.target_count == 0)
+						{
+							s_siege.status = Gamemode.Status.Ended;
+						}
+						else
+						{
+							if (time >= s_siege.t_next_wave)
+							{
+								s_siege.wave_current++;
+								s_siege.t_last_wave = time;
+
+								var difficulty_step = gm_siege.difficulty_step;
+								difficulty_step *= 1.00f + (player_count * gm_siege.difficulty_player_mult);
+								difficulty_step *= 1.00f + (s_siege.wave_current * gm_siege.difficulty_wave_mult);
+								difficulty_step *= gm_siege.difficulty_mult;
+								difficulty_step = Maths.SnapCeil(difficulty_step, 0.25f);
+
+								s_siege.difficulty = Maths.Clamp(s_siege.difficulty + difficulty_step, 1.00f, gm_siege.difficulty_max);
+								s_siege.scenario_wave_index_current = null;
+
+								var duration = gm_siege.wave_interval;
+
+								ref var scenario = ref s_siege.h_scenario.GetData(out var scenario_asset);
+								if (scenario.IsNotNull())
+								{
+									//App.WriteLine($"{scenario_asset.identifier}");
+
+									var priority_max = 0;
+
+									Span<WaveInfo> waves_tmp = stackalloc WaveInfo[scenario.waves.Length];
+									var waves_tmp_count = 0;
+
+									for (int i = 0; i < scenario.waves.Length; i++)
+									{
+										ref var wave = ref scenario.waves[i];
+
+										if (wave.type == ISiege.Wave.Type.Single)
+										{
+											if (wave.period == s_siege.wave_current)
+											{
+												//waves_tmp[0] = new(i, wave.priority, wave.weight);
+												//waves_tmp_count = 1;
+											}
+										}
+										else if (wave.type == ISiege.Wave.Type.Recurrent)
+										{
+											if (wave.period == 0 || s_siege.wave_current % wave.period == 0)
+											{
+												//waves_span.AddPrioritized(new WaveInfo(i, wave.priority, wave.weight), ref waves_span_count);
+
+												waves_tmp.Add(new WaveInfo(i, wave.priority, wave.weight), ref waves_tmp_count);
+												priority_max = Maths.Max(priority_max, wave.priority);
+											}
+										}
+									}
+
+									if (waves_tmp_count > 0)
+									{
+										//var waves_filtered = waves_tmp.Slice(0, waves_tmp_count).ToArray();
+										//var wave_info_current = waves_filtered.FirstOrDefault(x => x.priority >= priority_max);
+
+										ref var wave_info_current = ref waves_tmp.WithLength(waves_tmp_count).GetFirstOrNull(x => x.priority >= priority_max);
+										s_siege.scenario_wave_index_current = wave_info_current.IsNotNull() ? wave_info_current.index : null;
+
+										//App.WriteLine(wave_info_current.index);
+									}
+
+									//Span<WaveInfo> waves_filtered = stackalloc WaveInfo[waves_tmp_count];
+									//var waves_filtered_count = 0;
+
+									//for (int i = 0; i < waves_tmp_count; i++)
+									//{
+									//	ref var wave_info = ref waves_tmp[i];
+									//	if (wave_info.priority >= priority_max)
+									//	{
+									//		waves_filtered.Add(wave_info, ref waves_filtered_count);
+									//	}
+									//}
+								}
+
+								if (scenario.IsNotNull() && s_siege.scenario_wave_index_current.TryGetValue(out var scenario_wave_index))
+								{
+									ref var wave = ref scenario.waves[scenario_wave_index];
+									duration = wave.duration;
+
+									App.WriteLine($"Wave: [{wave.name}] {wave.music}; {wave.music_volume}; {wave.music_pitch}");
+
+									if (wave.music)
+									{
+										//g_siege_state.flags.SetFlag(Siege.Gamemode.Flags.Sound_Pending, true);
+										Sound.PlayMusic(region: ref region,
+											sound: wave.music,
+											volume: wave.music_volume,
+											pitch: wave.music_pitch,
+											delay: wave.music_delay);
+									}
+								}
+								else
+								{
+									if (s_siege.wave_current % 5 == 0)
+									{
+										duration *= 3.00f;
+									}
+								}
+
+								//g_siege_state.t_next_wave = time + Maths.Snap(g_siege.wave_interval + Maths.Clamp(g_siege_state.difficulty * 5.00f * g_siege.wave_interval_difficulty_mult, 0.00f, 300.00f), 15.00f);
+								s_siege.t_next_wave = time + Maths.Snap(duration, 15.00f);
+
+								sync |= true;
+
+								//Notification.Push(ref region, $"Group of {coordinator.wave_size} kobolds approaching from the {((transform.position.X / region.GetTerrain().GetWidth()) < 0.50f ? "west" : "east")}!", Color32BGRA.Yellow, lifetime: 10.00f, "ui.alert.02", volume: 0.60f, pitch: 0.75f);
+								//Notification.Push(ref region, $"Wave #{g_siege_state.wave_current}!", Color32BGRA.Red, lifetime: 30.00f, "ui.alert.11", volume: 0.60f, pitch: 0.80f);
+								Notification.Push(region: ref region,
+									message: $"Wave #{s_siege.wave_current}!",
+									color: Color32BGRA.Red,
+									lifetime: 30.00f,
+									sound: "effect.siren.loop.00",
+									volume: 0.20f,
+									pitch: 1.00f,
+									send_type: Net.SendType.Reliable);
+							}
+							else
+							{
+								//ref var scenario = ref g_siege_state.scenario.GetData(out var scenario_asset);
+								//if (!scenario.IsNull() && g_siege_state.scenario_wave_index_current.TryGetValue(out var scenario_wave_index))
+								//{
+								//	ref var wave = ref scenario.waves[scenario_wave_index];
+
+								//	if (wave.sound.id != 0 && g_siege_state.flags.HasAny(Siege.Gamemode.Flags.Sound_Pending) && (time - g_siege_state.t_last_wave) >= wave.sound_delay)
+								//	{
+								//		g_siege_state.flags.SetFlag(Siege.Gamemode.Flags.Sound_Pending, false);
+								//		Sound.PlayGUI(ref region, wave.sound, volume: wave.sound_volume, wave.sound_pitch);
+								//	}
+								//}
+							}
+						}
+					}
+					break;
+
+					case Gamemode.Status.Ended:
+					{
+						if (s_siege.t_next_restart == 0.00f)
+						{
+							s_siege.t_last_notification = time;
+							Notification.Push(region: ref region,
+								message: "Defeat! Restarting in 10 seconds...",
+								color: Color32BGRA.Yellow,
+								lifetime: 10.00f,
+								sound: "ui.alert.09",
+								volume: 0.40f,
+								pitch: 1.00f,
+								send_type: Net.SendType.Reliable);
+
+							s_siege.t_next_restart = time + 10.00f;
+						}
+
+						if (time >= s_siege.t_next_restart)
+						{
+							Siege.ChangeMap(ref region, default);
+							s_siege.status = Gamemode.Status.Restarting;
+						}
+					}
+					break;
+
+					case Gamemode.Status.Restarting:
+					{
+
+					}
+					break;
+				}
+#endif
+
+				s_siege.t_match_elapsed += info.DeltaTime;
+			}
+
+#if SERVER
+			if (sync)
+			{
+				region.SyncSingleton(ref s_siege);
+				App.WriteLine("Synced Siege");
+			}
+#endif
+		}
+	}
+}
