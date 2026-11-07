@@ -1,0 +1,363 @@
+﻿namespace TC2.Base.Components
+{
+	public static partial class Press
+	{
+		[Obsolete]
+		public static readonly Sound.Handle[] snd_stamp =
+		{
+			"press.stamp.00",
+			"press.stamp.01",
+			"press.stamp.02"
+		};
+
+		[Obsolete]
+		public static readonly Sound.Handle[] snd_smash =
+		{
+			"press.smash.00",
+			"press.smash.01",
+			"press.smash.02"
+		};
+
+		[Obsolete]
+		public static readonly Sound.Handle[] snd_fail =
+		{
+			"press.fail.00",
+			"press.fail.01",
+			"press.fail.02"
+		};
+
+		// https://en.wikipedia.org/wiki/Machine_press
+		[IComponent.Data(Net.SendType.Reliable, IComponent.Scope.Region), IComponent.With<Press.State>]
+		public partial struct Data: IComponent
+		{
+			//[Net.Segment.A, Editor.Picker.Position(relative: true)] public Vec2f slider_offset;
+
+			//[Net.Segment.A] public float slider_length;
+			//[Net.Segment.A] public float speed;
+			//[Net.Segment.A] public float load_multiplier;
+
+			[Net.Segment.A, Save.Force] public required Area area_tip;
+
+			[Net.Segment.A] public ISoundMix.Handle h_soundmix_hit;
+			[Net.Segment.A] public ISoundMix.Handle h_soundmix_fail;
+
+			//[Net.Ignore, Save.Ignore] public uint current_sound_index;
+		}
+
+		[IComponent.Data(Net.SendType.Unreliable, IComponent.Scope.Region)]
+		public partial struct State: IComponent
+		{
+			[Flags]
+			public enum Flags: ushort
+			{
+				None = 0,
+
+				Impacted = 1 << 0,
+				Success = 1 << 1
+			}
+
+			public Press.State.Flags flags;
+			[Net.Ignore, Save.Ignore] public ushort current_sound_index;
+		}
+
+#if CLIENT
+		private static readonly Texture.Handle bigger_smoke_light = "BiggerSmoke_Light";
+		private static readonly Texture.Handle metal_spark_01 = "metal_spark.01";
+
+		[ISystem.EarlyUpdate(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void OnUpdateEffects(ref Region.Data region, ref XorRandom random,
+		[Source.Owned] in Transform.Data transform,
+		[Source.Owned] ref Press.Data press, [Source.Owned] ref Press.State press_state,
+		[Source.Owned, Pair.Component<Press.Data>] ref Light.Data light, [Source.Owned] ref Crafter.State crafter_state)
+		{
+			if (press_state.flags.HasAny(Press.State.Flags.Impacted))
+			{
+				if (press_state.flags.HasAny(Press.State.Flags.Success))
+				{
+					//Sound.Play(snd_smash[(press.current_sound_index++) % snd_smash.Length], transform.position, volume: 1.00f, pitch: random.NextFloatRange(0.70f, 0.80f), size: 0.80f, priority: 0.60f, dist_multiplier: 0.70f);
+					//Sound.Play(sound: snd_stamp.GetNext(ref press_state.current_sound_index), world_position: transform.position, volume: 0.60f, pitch: random.NextFloatExtra(0.95f, 0.10f), size: 4.00f, priority: 0.20f, dist_multiplier: 0.55f);
+					Shake.Emit(region: ref region, world_position: transform.position, trauma: 0.30f, max: 0.35f, radius: 14.00f);
+
+					light.intensity = 1.00f;
+
+					var pos = transform.LocalToWorld(light.offset);
+					var dir = transform.GetDirection();
+
+					{
+						ref var particle = ref Particle.Reserve(ref region);
+
+						particle.texture = bigger_smoke_light;
+						particle.lifetime = random.NextFloatRange(0.50f, 1.00f);
+						particle.pos = pos + random.NextVector2(0.50f);
+						particle.vel = random.NextVector2Range(-1.00f, 1.00f);
+						particle.fps = random.NextByteRange(5, 10);
+						particle.frame_count = 64;
+						particle.frame_count_total = 64;
+						particle.frame_offset = random.NextByteRange(0, 64);
+						particle.scale = random.NextFloatRange(0.50f, 0.80f);
+						particle.rotation = random.NextFloat(10.00f);
+						particle.angular_velocity = random.NextFloatRange(-1.00f, 1.00f);
+						particle.growth = random.NextFloatRange(0.40f, 0.60f);
+						particle.drag = random.NextFloatRange(0.01f, 0.03f);
+						particle.force = new Vector2(0.00f, random.NextFloatRange(0, -2));
+						particle.color_a = random.NextColor32Range(0x80ffffff, 0xa0ffffff);
+						particle.color_b = random.NextColor32Range(0x00ffffff, 0x00808080);
+
+					}
+
+					//for (var i = 0; i < 10; i++)
+					//{
+					//	Particle.Spawn(ref region, new Particle.Data()
+					//	{
+					//		texture = metal_spark_01,
+					//		lifetime = random.NextFloatRange(0.20f, 0.80f),
+					//		pos = transform.LocalToWorld(light.offset + new Vector2(random.NextFloatRange(-0.50f, 0.50f), 0)),
+					//		vel = (dir * random.NextFloatRange(0, 25) * (i % 2 == 0 ? 1.00f : -1.00f)).RotateByRad(random.NextFloatRange(-0.10f, 0.10f)) + random.NextVector2(5),
+					//		fps = 0,
+					//		frame_count = 1,
+					//		frame_offset = random.NextByteRange(0, 4),
+					//		frame_count_total = 4,
+					//		scale = random.NextFloatRange(0.30f, 0.40f),
+					//		growth = -random.NextFloatRange(0.60f, 1.00f),
+					//		force = new Vector2(0.00f, random.NextFloatRange(20, 60)),
+					//		drag = random.NextFloatRange(0.01f, 0.05f),
+					//		stretch = new Vector2(random.NextFloatRange(2.00f, 3.00f), 0.75f),
+					//		color_a = random.NextColor32Range(0xffffffff, 0xffffc0b0),
+					//		color_b = random.NextColor32Range(0xffffc0b0, 0xffffa090),
+					//		lit = 1.00f,
+					//		face_dir_ratio = 1.00f
+					//	});
+					//}
+				}
+				else
+				{
+					Sound.Play(sound: snd_fail.GetNext(ref press_state.current_sound_index), world_position: transform.position, volume: 1.20f, pitch: random.NextFloatRange(0.70f, 0.90f), size: 1.80f, priority: 0.20f, dist_multiplier: 0.50f);
+					Shake.Emit(region: ref region, world_position: transform.position, trauma: 0.30f, max: 0.30f, radius: 16.00f);
+				}
+
+				press_state.flags.RemoveFlag(Press.State.Flags.Impacted | Press.State.Flags.Success);
+			}
+			else
+			{
+				light.intensity = Maths.Lerp(light.intensity, 0.00f, 0.15f);
+			}
+		}
+#endif
+
+		[ISystem.Update.A(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void OnUpdate_Piston(/*ISystem.Info info, ref Region.Data region, ref XorRandom random, */Entity ent_press,
+		//[Source.Owned] in Transform.Data transform, [Source.Owned] ref Control.Data control,
+		[Source.Owned] ref Press.Data press, [Source.Owned] ref Press.State press_state, [Source.Owned] ref Piston.Data piston,
+		[Source.Owned] in Crafter.Data crafter, [Source.Owned] ref Crafter.State crafter_state)
+		{
+			if (piston.flags.HasAny(Piston.Flags.Impacted))
+			{
+				//var velocity = Energy.GetVelocity(piston.impact_kinetic_energy, piston.mass);
+				//var momentum = velocity * piston.mass;
+				//var mass = Energy.GetMass(piston.current_kinetic_energy, 25);
+				//App.WriteValue(velocity);
+
+
+				//var force = momentum * App.fixed_update_interval_s_inv; // * App.fixed_update_interval_s_f32;
+				var force = piston.impact_momentum * App.fixed_update_interval_s_inv; // * App.fixed_update_interval_s_f32;
+				var pressure = Pressure.CalculateFromArea(Area.Square(Distance.cm(4.00f)), force);
+
+				crafter_state.pressure = pressure;
+			}
+		}
+
+		[ISystem.Update.A(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void OnUpdate_Axle(ISystem.Info info, ref Region.Data region, ref XorRandom random, Entity ent_press,
+		[Source.Owned] ref Press.Data press, [Source.Owned] ref Press.State press_state,
+		[Source.Owned] in Transform.Data transform, [Source.Owned] ref Piston.Data piston,
+		[Source.Owned] ref Crafter.Data crafter, [Source.Owned] ref Crafter.State crafter_state,
+		[Source.Owned] ref Axle.Data axle, [Source.Owned] ref Axle.State axle_state)
+		{
+			var hvcos = Maths.HvCos(axle_state.rotation);
+			var modifier_current = hvcos.Pow2();
+
+			piston.current_distance = Maths.Lerp(0.00f, piston.length, modifier_current);
+
+			if (axle_state.flags.HasAny(Axle.State.Flags.Revolved))
+			{
+//#if SERVER
+				//axle_state.Sync(ent_press, overwrite: true);
+				//piston.flags.AddFlag(Piston.Flags.Impacted);
+
+				piston.flags.AddFlag(Piston.Flags.Impacted);
+				//piston.Sync(ent_press, overwrite: true);
+//#endif
+				//piston.flags.AddFlag(Piston.Flags.Impacted);
+			}
+			else
+			{
+				piston.flags.RemoveFlag(Piston.Flags.Impacted);
+			}
+
+			//if (axle_state.flags.HasAny(Axle.State.Flags.Revolved))
+			//{
+			//	App.WriteLine((piston.current_distance, axle_state.rotation_old));
+			//}
+		}
+
+		//[ISystem.PostUpdate.A(ISystem.Mode.Single, ISystem.Scope.Region)]
+		//public static void OnUpdate_Renderer([Source.Owned] ref Press.Data piston,
+		//[Source.Owned, Pair.Component<Press.Data>] ref Animated.Renderer.Data renderer)
+		//{
+		//	renderer.offset = piston.offset.AddY(piston.current_distance);
+		//	//renderer_slider.offset = press.slider_offset + new Vector2(0.00f, MathF.Pow((MathF.Cos(axle_state.rotation) + 1.00f) * 0.50f, press.speed) * press.slider_length);
+		//}
+
+		[Shitcode]
+		[ISystem.Update.F(ISystem.Mode.Single, ISystem.Scope.Region)]
+		public static void OnUpdate_F(Entity ent_press,
+		[Source.Owned] ref Press.Data press, [Source.Owned] ref Press.State press_state, [Source.Owned] ref Piston.Data piston,
+		[Source.Owned] in Crafter.Data crafter, [Source.Owned] ref Crafter.State crafter_state)
+		{
+			if (piston.flags.HasAny(Piston.Flags.Impacted))
+			{
+				//var velocity = Energy.GetVelocity(piston.current_kinetic_energy, piston.mass);
+				//var momentum = velocity * piston.mass;
+				////var mass = Energy.GetMass(piston.current_kinetic_energy, 25);
+				////App.WriteValue(velocity);
+
+
+				//var force = momentum * App.fixed_update_interval_s_inv; // * App.fixed_update_interval_s_f32;
+				//var pressure = Pressure.CalculateFromArea(Area.Square(Distance.cm(4.00f)), force);
+
+				//crafter_state.pressure = pressure;
+
+
+#if SERVER
+
+				//var velocity = Energy.GetVelocity(piston.impact_kinetic_energy, piston.mass);
+				//var momentum = velocity * piston.mass;
+				//var amount = piston.current_kinetic_energy;
+				////amount = Maths.NormalizeFast(amount, 16);
+				////amount *= App.fixed_update_interval_s_f32;
+				//amount *= 2;
+				//amount /= piston.mass;
+				//amount = Maths.Sqrt(amount);
+
+
+				//var energy = piston.current_kinetic_energy;
+				//var mass = piston.mass;
+				//var velocity = Maths.Sqrt(2.00f * energy / mass);
+
+				//var velocity = Energy.GetVelocity(piston.current_kinetic_energy, piston.mass);
+				//var amount = velocity * piston.mass;
+				////var mass = Energy.GetMass(piston.current_kinetic_energy, 25);
+				////App.WriteValue(velocity);
+
+
+				//var force = amount * App.fixed_update_interval_s_inv; // * App.fixed_update_interval_s_f32;
+				//var pressure = Pressure.CalculateFromArea(Area.Square(Distance.cm(8.00f)), force);
+
+				//crafter_state.pressure = pressure;
+
+				//App.WriteValue(Pressure.CalculateFromArea(Area.Square(Distance.cm(8.00f)), force));
+
+				var momentum = piston.impact_momentum;
+				scoped var ev = new Crafter.WorkEvent(amount: momentum,
+				calculate_work: static (ref Region.Data.Common region, Vec2f pos, ref Crafter.WorkEvent ev,
+				ref ICrafter.ModeInfo mode, ref Crafting.Order order, ref Crafting.Requirement req, ref IWork.Data work) =>
+				{
+					return Maths.NormalizeFast(ev.amount, req.difficulty) * mode.work_multiplier;
+				});
+
+				//var ts = Timestamp.Now();
+				ev.Trigger(ent_press, h_component: IComponent.Handle.FromComponent<Crafter.Data>());
+
+				var sync = false;
+
+				press_state.flags.AddFlag(State.Flags.Impacted);
+				sync |= press_state.flags.TrySetFlag(State.Flags.Success, ev.work_result == Worker.WorkResult.Progress);
+				sync |= ev.work_result != Worker.WorkResult.Idle;
+
+				if (sync)
+				{
+					press_state.Sync(ent_press, true);
+				}
+				//crafter_state.flags.AddFlag(Crafter.State.Flags.In_Contact | Crafter.State.Flags.Ready);
+				//var ts_elapsed = ts.GetMilliseconds();
+				//App.WriteLine($"{ev.work_result}; {ts_elapsed:0.00000} ms");
+
+				//press_state.flags.AddFlag(State.Flags.Smashed | State.Flags.Success);
+				//press_state.Sync(ent_press, true);
+				//App.WriteLine("smash");
+#endif
+			}
+		}
+
+#if CLIENT
+		//public struct PressGUI: IGUICommand
+		//{
+		//	public Entity ent_press;
+		//	public Transform.Data transform;
+
+		//	public Press.Data press;
+		//	public Press.State press_state;
+
+		//	public Crafter.Data crafter;
+		//	public Crafter.State crafter_state;
+
+		//	//public Axle.Data axle;
+		//	//public Axle.State axle_state;
+
+		//	public static uint load_graph_index;
+		//	public static float[] load_graph = new float[App.tickrate * 3];
+
+		//	public void Draw()
+		//	{
+		//		using (var window = GUI.Window.InteractionMisc(title: "Press"u8, entity: this.ent_press, size: new(48 * 3, 96), show_misc: true))
+		//		{
+		//			this.StoreCurrentWindowTypeID(order: 100);
+		//			if (window.show)
+		//			{
+		//				GUI.DrawFillBackground(GUI.tex_frame, new(8));
+		//			}
+		//		}
+		//	}
+		//}
+
+		//[NotImplemented]
+		//[ISystem.EarlyGUI(ISystem.Mode.Single, ISystem.Scope.Region)]
+		//public static void OnGUI(Entity ent_press, [Source.Owned] in Transform.Data transform,
+		//[Source.Owned] in Press.Data press, [Source.Owned] in Press.State press_state,
+		//[Source.Owned] in Crafter.Data crafter, [Source.Owned] in Crafter.State crafter_state,
+		//[Source.Owned] in Interactable.Data interactable)
+		//{
+		//	return;
+
+		//	if (interactable.IsActive())
+		//	{
+		//		var gui = new PressGUI()
+		//		{
+		//			ent_press = ent_press,
+
+		//			transform = transform,
+
+		//			press = press,
+		//			press_state = press_state,
+
+		//			crafter = crafter,
+		//			crafter_state = crafter_state,
+
+		//			//axle = axle,
+		//			//axle_state = axle_state
+		//		};
+		//		gui.Submit();
+		//	}
+		//}
+
+		//[ISystem.Update.A(ISystem.Mode.Single, ISystem.Scope.Region)]
+		//public static void OnUpdate(ISystem.Info info,
+		//[Source.Owned] in Transform.Data transform,
+		//[Source.Owned] ref Press.Data press, // [Source.Owned] ref Axle.Data axle, [Source.Owned] ref Axle.State axle_state,
+		//[Source.Owned, Pair.Component<Press.Data>] ref Animated.Renderer.Data renderer_slider)
+		//{
+		//	//renderer_slider.offset = press.slider_offset + new Vector2(0.00f, MathF.Pow((MathF.Cos(axle_state.rotation) + 1.00f) * 0.50f, press.speed) * press.slider_length);
+		//}
+#endif
+	}
+}
