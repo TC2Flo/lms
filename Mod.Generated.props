@@ -1,0 +1,18 @@
+﻿<Project>
+	<PropertyGroup>
+		<GameDir>C:\Program Files (x86)\Steam\steamapps\common\TerritoryControl2\</GameDir>
+		<ModIdentifier>TC2.LMS</ModIdentifier>
+	</PropertyGroup>
+	<ItemGroup>
+		<Compile Include="$(GameDir)Mods\TC2.Core\Content\**\*.cs" LinkBase="TC2.Core\" />
+		<None Include="$(GameDir)Mods\TC2.Core\Content\**\*" Exclude="$(GameDir)Mods\TC2.Core\Content\**\*.cs" LinkBase="TC2.Core\" />
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Include="$(GameDir)Mods\TC2.Base\Content\**\*.cs" LinkBase="TC2.Base\" />
+		<None Include="$(GameDir)Mods\TC2.Base\Content\**\*" Exclude="$(GameDir)Mods\TC2.Base\Content\**\*.cs" LinkBase="TC2.Base\" />
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Include="$(GameDir)Mods\TC2.LMS\content\**\*.cs" LinkBase="TC2.LMS\" />
+		<None Include="$(GameDir)Mods\TC2.LMS\Content\**\*" Exclude="$(GameDir)Mods\TC2.LMS\Content\**\*.cs" LinkBase="TC2.LMS\" />
+	</ItemGroup>
+</Project>

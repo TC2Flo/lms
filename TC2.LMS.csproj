@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+	<Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+	<Import Project="Mod.Generated.props" />
+
+	<PropertyGroup>
+		<RootNamespace>$(ModIdentifier)</RootNamespace>
+
+		<UseCommonOutputDirectory>true</UseCommonOutputDirectory>
+		<BaseOutputPath>local\bin\</BaseOutputPath>
+		<BaseIntermediateOutputPath>local\obj\</BaseIntermediateOutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+		<DisableFastUpToDateCheck>false</DisableFastUpToDateCheck>
+
+		<LangVersion>preview</LangVersion>
+		<EnablePreviewFeatures>true</EnablePreviewFeatures>
+		<TargetFramework>net11.0</TargetFramework>
+		<OutputType>Library</OutputType>
+		<Optimize>false</Optimize>
+		<Platforms>x64</Platforms>
+		<Configurations>Client;Server</Configurations>
+
+		<SkipCopyBuildProduct>true</SkipCopyBuildProduct>
+		<ProduceOnlyReferenceAssembly>false</ProduceOnlyReferenceAssembly>
+		<ProduceReferenceAssemblies>false</ProduceReferenceAssemblies>
+		<ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+		<AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+		<MSBuildAllProjects>true</MSBuildAllProjects>
+		<GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+		<GenerateDependencyFile>false</GenerateDependencyFile>
+		<DebugSymbols>false</DebugSymbols>
+		<HasRuntimeOutput>false</HasRuntimeOutput>
+		<ComputeNETCoreBuildOutputFiles>true</ComputeNETCoreBuildOutputFiles>
+		<DebugType>none</DebugType>
+		<CodeAnalysisQuiet>true</CodeAnalysisQuiet>
+
+		<DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+
+		<AssemblySearchPaths>$(AssemblySearchPaths);$(GameDir);</AssemblySearchPaths>
+
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+		<EnableDefaultContentItems>false</EnableDefaultContentItems>
+		<EnableDefaultItems>false</EnableDefaultItems>
+
+		<EnableNETAnalyzers>true</EnableNETAnalyzers>
+		<RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+		<RunAnalyzersDuringLiveAnalysis>true</RunAnalyzersDuringLiveAnalysis>
+		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+		<!--<AnalysisMode>preview</AnalysisMode>-->
+	</PropertyGroup>
+
+	<Choose>
+		<When Condition="$(Configuration.Contains('Client'))">
+			<PropertyGroup>
+				<DefineConstants>$(DefineConstants);CLIENT;</DefineConstants>
+			</PropertyGroup>
+		</When>
+		<When Condition="$(Configuration.Contains('Server'))">
+			<PropertyGroup>
+				<DefineConstants>$(DefineConstants);SERVER;</DefineConstants>
+			</PropertyGroup>
+		</When>
+	</Choose>
+
+	<ItemGroup>
+		<Reference Include="System.Private.CoreLib.dll" />
+		<Reference Include="System.Runtime.dll" />
+		<Reference Include="System.Runtime.Intrinsics.dll" />
+		<Reference Include="System.Numerics.dll" />
+		<Reference Include="System.Numerics.Vectors.dll" />
+		<Reference Include="System.Collections.dll" />
+		<Reference Include="System.Collections.Immutable.dll" />
+		<Reference Include="System.Linq.dll" />
+		<Reference Include="System.Memory.dll" />
+
+		<Reference Include="Silk.NET.Maths.dll" />
+		<Reference Include="UniTask.dll" />
+		<Reference Include="Hjson.dll" />
+		<Reference Include="MessagePack.Annotations.dll" />
+		<Reference Include="mscorlib.dll" />
+		<Reference Include="netstandard.dll" />
+		<Reference Include="Microsoft.CSharp.dll" />
+	</ItemGroup>
+
+	<Choose>
+		<When Condition="$(Configuration.Contains('Client'))">
+			<ItemGroup>
+				<Reference Include="TC2.Client" />
+			</ItemGroup>
+		</When>
+		<When Condition="$(Configuration.Contains('Server'))">
+			<ItemGroup>
+				<Reference Include="TC2.Server" />
+			</ItemGroup>
+		</When>
+	</Choose>
+
+	<Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

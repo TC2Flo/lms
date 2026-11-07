@@ -1,0 +1,20 @@
+{
+	"version": "0.1.75.2",
+	"guid": "769d6e8f-1114-47a2-b610-bb626e5cbf81",
+	"name": "LMS",
+	"description": "Gameplay loop completion with multiple additions.",
+	"url": null,
+	"git": null,
+	"authors": [],
+	"dependencies": [
+		{
+			"identifier": "TC2.Core",
+			"required": true
+		},
+		{
+			"identifier": "TC2.Base",
+			"required": true
+		}
+	],
+	"tags": []
+}
